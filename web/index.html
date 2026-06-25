@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Talk to Me V3.6 — 峰哥</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+        width: 100%; height: 100%;
+        background: #000;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+
+    #scene {
+        position: fixed;
+        inset: 0;
+        display: block;
+    }
+
+    /* ---------- UI overlay ---------- */
+    #ui {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        color: #fff;
+        z-index: 10;
+    }
+
+    /* ---------- Top bar ---------- */
+    #topBar {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 28px;
+    }
+    #modelSelect {
+        pointer-events: auto;
+        appearance: none;
+        -webkit-appearance: none;
+        background: rgba(20, 20, 24, 0.55) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center;
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        color: #e8e8f0;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+        padding: 9px 34px 9px 16px;
+        cursor: pointer;
+        outline: none;
+        transition: border-color 0.25s, background-color 0.25s;
+    }
+    #modelSelect:hover { border-color: rgba(255, 255, 255, 0.25); }
+    #modelSelect option { background: #16161a; color: #e8e8f0; }
+
+    #statusPill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(20, 20, 24, 0.55);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        padding: 9px 18px;
+        font-size: 14px;
+        color: #d8d8e0;
+        letter-spacing: 0.02em;
+        transition: border-color 0.4s;
+    }
+    #statusDot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: #666;
+        flex: none;
+        transition: background 0.4s, box-shadow 0.4s;
+    }
+    #statusDot.ready      { background: #8e8e93; }
+    #statusDot.connecting { background: #ff9f0a; animation: dotBlink 1s ease-in-out infinite; }
+    #statusDot.connected  { background: #34c759; box-shadow: 0 0 8px rgba(52, 199, 89, 0.8); }
+    #statusDot.error      { background: #ff453a; }
+    @keyframes dotBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    /* ---------- Toast ---------- */
+    #toast {
+        position: fixed;
+        top: 76px;
+        left: 50%;
+        transform: translate(-50%, -8px);
+        background: rgba(28, 28, 32, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        padding: 10px 22px;
+        font-size: 14px;
+        color: #ffd699;
+        opacity: 0;
+        transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    /* ---------- Bottom controls ---------- */
+    #bottomControls {
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding-bottom: 44px;
+        gap: 14px;
+    }
+    #micButton {
+        pointer-events: auto;
+        width: 72px; height: 72px;
+        border-radius: 50%;
+        border: 1.5px solid #444;
+        background: rgba(14, 14, 18, 0.6);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        outline: none;
+        transition: border-color 0.4s ease, box-shadow 0.5s ease, transform 0.3s ease, background 0.4s ease;
+    }
+    #micButton svg {
+        width: 26px; height: 26px;
+        stroke: #cfcfd6;
+        transition: stroke 0.4s ease;
+    }
+    #micButton:hover { border-color: #666; transform: scale(1.04); }
+    #micButton:active { transform: scale(0.96); }
+    #micButton.connected {
+        border-color: #34c759;
+        box-shadow: 0 0 28px rgba(52, 199, 89, 0.22), inset 0 0 14px rgba(52, 199, 89, 0.06);
+    }
+    #micButton.connected svg { stroke: #6fe08e; }
+    #micButton.speaking { animation: micPulse 2s ease-in-out infinite; }
+    @keyframes micPulse {
+        0%, 100% { transform: scale(1.0); }
+        50%      { transform: scale(1.05); }
+    }
+
+    #timer {
+        font-size: 13px;
+        color: #fff;
+        opacity: 0.4;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.08em;
+        height: 16px;
+        transition: opacity 0.4s;
+    }
+
+    #transcript {
+        font-size: 22px;
+        line-height: 1.5;
+        color: #fff;
+        max-width: 600px;
+        min-height: 33px;
+        text-align: center;
+        padding: 0 24px;
+        text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    #transcript.active { opacity: 1; }
+    #transcript.idle   { opacity: 0.3; transition: opacity 1.2s ease; }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<div id="ui">
+    <div id="topBar">
+        <select id="modelSelect">
+            <option value="minimax">峰哥 · MiniMax</option>
+        </select>
+        <div id="statusPill">
+            <span id="statusDot" class="ready"></span>
+            <span id="statusText">就绪</span>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <div id="bottomControls">
+        <button id="micButton" aria-label="开始对话">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="2.5" width="6" height="11.5" rx="3"></rect>
+                <path d="M5 11.5a7 7 0 0 0 14 0"></path>
+                <line x1="12" y1="18.5" x2="12" y2="21.5"></line>
+            </svg>
+        </button>
+        <div id="timer">00:00</div>
+        <div id="transcript"></div>
+    </div>
+</div>
+
+<audio id="remoteAudio" autoplay playsinline></audio>
+
+<script src="livekit-client.umd.js"></script>
+<!-- three.js r160+ 不再提供 UMD 版 three.min.js（404），改用 ES module 构建 -->
+<script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.min.js';
+    window.THREE = THREE;
+    window.dispatchEvent(new Event('three-ready'));
+</script>
+<script>
+function bootTalkToMe() {
+    'use strict';
+    const THREE = window.THREE;
+
+    // ================================================================
+    //  CONFIG
+    // ================================================================
+    const PARTICLE_MODE = 'abstract'; // 'abstract' | 'photo' — V3.6 暂回退到星空粒子效果
+    const PARTICLE_COUNT = 5000;
+
+    const MODEL_NAMES = {
+        minimax: '峰哥',
+    };
+
+    // ================================================================
+    //  DOM
+    // ================================================================
+    const canvas = document.getElementById('scene');
+    const modelSelect = document.getElementById('modelSelect');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const toastEl = document.getElementById('toast');
+    const micButton = document.getElementById('micButton');
+    const timerEl = document.getElementById('timer');
+    const transcriptEl = document.getElementById('transcript');
+    const remoteAudio = document.getElementById('remoteAudio');
+
+    // ================================================================
+    //  THREE.JS PARTICLE SYSTEM
+    // ================================================================
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const CAMERA_RADIUS = 95;
+    camera.position.set(0, 6, CAMERA_RADIUS);
+    camera.lookAt(0, 0, 0);
+
+    // ---- Nebula-like organic distribution ------------------------------
+    // Particles cluster along a few stretched gaussian "filaments" plus a
+    // sparse halo — organic, not a sphere, not a grid.
+    function gaussian() {
+        let u = 0, v = 0;
+        while (u === 0) u = Math.random();
+        while (v === 0) v = Math.random();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+
+    const CLUSTERS = [];
+    const CLUSTER_COUNT = 6;
+    for (let c = 0; c < CLUSTER_COUNT; c++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 8 + Math.random() * 22;
+        // random stretch axis turns blobs into filaments
+        const ax = Math.random() - 0.5, ay = Math.random() - 0.5, az = Math.random() - 0.5;
+        const al = Math.hypot(ax, ay, az) || 1;
+        CLUSTERS.push({
+            x: r * Math.sin(phi) * Math.cos(theta),
+            y: r * Math.sin(phi) * Math.sin(theta) * 0.65,
+            z: r * Math.cos(phi),
+            sigma: 5 + Math.random() * 9,
+            stretch: 1.8 + Math.random() * 2.6,
+            axis: [ax / al, ay / al, az / al],
+        });
+    }
+
+    function sampleNebulaPoint(out) {
+        if (Math.random() < 0.07) {
+            // sparse halo
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const r = 26 + Math.pow(Math.random(), 0.6) * 22;
+            out[0] = r * Math.sin(phi) * Math.cos(theta);
+            out[1] = r * Math.sin(phi) * Math.sin(theta) * 0.6;
+            out[2] = r * Math.cos(phi);
+            return;
+        }
+        const cl = CLUSTERS[(Math.random() * CLUSTER_COUNT) | 0];
+        let dx = gaussian() * cl.sigma;
+        let dy = gaussian() * cl.sigma;
+        let dz = gaussian() * cl.sigma;
+        // stretch along the cluster axis
+        const dot = dx * cl.axis[0] + dy * cl.axis[1] + dz * cl.axis[2];
+        dx += cl.axis[0] * dot * (cl.stretch - 1);
+        dy += cl.axis[1] * dot * (cl.stretch - 1);
+        dz += cl.axis[2] * dot * (cl.stretch - 1);
+        out[0] = cl.x + dx;
+        out[1] = cl.y + dy;
+        out[2] = cl.z + dz;
+    }
+
+    // ---- BufferGeometry attributes -------------------------------------
+    const positions = new Float32Array(PARTICLE_COUNT * 3);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const sizes = new Float32Array(PARTICLE_COUNT);
+    const velocities = new Float32Array(PARTICLE_COUNT * 3);
+    const basePositions = new Float32Array(PARTICLE_COUNT * 3);
+    // targetPosition: reserved for photo-dissolve mode (V3.6) — particles
+    // morph between basePosition and targetPosition via u_morph.
+    const targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+
+    const tmp = [0, 0, 0];
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        sampleNebulaPoint(tmp);
+        const i3 = i * 3;
+        positions[i3] = basePositions[i3] = targetPositions[i3] = tmp[0];
+        positions[i3 + 1] = basePositions[i3 + 1] = targetPositions[i3 + 1] = tmp[1];
+        positions[i3 + 2] = basePositions[i3 + 2] = targetPositions[i3 + 2] = tmp[2];
+
+        // cool white (#e8e8ff) with subtle per-particle variation
+        const tint = 0.85 + Math.random() * 0.15;
+        colors[i3] = 0.91 * tint;
+        colors[i3 + 1] = 0.91 * tint;
+        colors[i3 + 2] = 1.0 * tint;
+
+        // a few brighter "stars" among fine dust
+        sizes[i] = Math.random() < 0.05
+            ? 3.6 + Math.random() * 2.2
+            : 1.5 + Math.random() * 1.7;
+
+        // random scatter direction for audio displacement
+        const vt = Math.random() * Math.PI * 2;
+        const vp = Math.acos(2 * Math.random() - 1);
+        const vm = 0.4 + Math.random() * 0.6;
+        velocities[i3] = vm * Math.sin(vp) * Math.cos(vt);
+        velocities[i3 + 1] = vm * Math.sin(vp) * Math.sin(vt);
+        velocities[i3 + 2] = vm * Math.cos(vp);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+    geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
+    geometry.setAttribute('targetPosition', new THREE.BufferAttribute(targetPositions, 3));
+
+    // ---- Shaders --------------------------------------------------------
+    const uniforms = {
+        u_time: { value: 0 },
+        u_audioLevel: { value: 0 },
+        u_bassLevel: { value: 0 },
+        u_trebleLevel: { value: 0 },
+        u_morph: { value: 0 }, // 0 = basePosition (abstract), 1 = targetPosition (photo)
+        u_pixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+    };
+
+    const vertexShader = `
+        // Ashima 3D simplex noise
+        vec3 mod289(vec3 x){ return x - floor(x * (1.0/289.0)) * 289.0; }
+        vec4 mod289(vec4 x){ return x - floor(x * (1.0/289.0)) * 289.0; }
+        vec4 permute(vec4 x){ return mod289(((x*34.0)+1.0)*x); }
+        vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - 0.85373472095314 * r; }
+        float snoise(vec3 v){
+            const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+            const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+            vec3 i = floor(v + dot(v, C.yyy));
+            vec3 x0 = v - i + dot(i, C.xxx);
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min(g.xyz, l.zxy);
+            vec3 i2 = max(g.xyz, l.zxy);
+            vec3 x1 = x0 - i1 + C.xxx;
+            vec3 x2 = x0 - i2 + C.yyy;
+            vec3 x3 = x0 - D.yyy;
+            i = mod289(i);
+            vec4 p = permute(permute(permute(
+                      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                    + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                    + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+            float n_ = 0.142857142857;
+            vec3 ns = n_ * D.wyz - D.xzx;
+            vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+            vec4 x_ = floor(j * ns.z);
+            vec4 y_ = floor(j - 7.0 * x_);
+            vec4 x = x_ * ns.x + ns.yyyy;
+            vec4 y = y_ * ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+            vec4 b0 = vec4(x.xy, y.xy);
+            vec4 b1 = vec4(x.zw, y.zw);
+            vec4 s0 = floor(b0)*2.0 + 1.0;
+            vec4 s1 = floor(b1)*2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+            vec3 p0 = vec3(a0.xy, h.x);
+            vec3 p1 = vec3(a0.zw, h.y);
+            vec3 p2 = vec3(a1.xy, h.z);
+            vec3 p3 = vec3(a1.zw, h.w);
+            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+            p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+            m = m * m;
+            return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+        }
+
+        attribute float size;
+        attribute vec3 velocity;
+        attribute vec3 basePosition;
+        attribute vec3 targetPosition;
+
+        uniform float u_time;
+        uniform float u_audioLevel;
+        uniform float u_bassLevel;
+        uniform float u_trebleLevel;
+        uniform float u_morph;
+        uniform float u_pixelRatio;
+
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        void main() {
+            // photo mode (V3.6): morph rest position toward image targets
+            vec3 rest = mix(basePosition, targetPosition, u_morph);
+
+            // continuous noise-driven drift (calm breathing of the nebula)
+            float t = u_time * 0.13;
+            vec3 np = rest * 0.018;
+            vec3 drift = vec3(
+                snoise(np + vec3(t, 0.0, 0.0)),
+                snoise(np + vec3(0.0, t, 7.31)),
+                snoise(np + vec3(11.7, 3.1, t))
+            );
+            vec3 pos = rest + drift * (2.2 + u_bassLevel * 9.0);
+
+            // bass: slow large-scale wave rolling through the field
+            float wave = snoise(rest * 0.03 + vec3(0.0, 0.0, u_time * 0.45));
+            pos += normalize(rest + vec3(0.001)) * wave * u_bassLevel * 7.0;
+
+            // overall audio displacement: expand outward from rest position
+            pos += normalize(rest + vec3(0.001)) * u_audioLevel * u_audioLevel * 13.0;
+            pos += velocity * u_audioLevel * 7.0;
+
+            vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+
+            // treble: per-particle shimmer / sparkle on size
+            float phase = rest.x * 0.7 + rest.y * 1.3 + rest.z * 0.4;
+            float shimmer = 1.0 + u_trebleLevel * 1.6 * (0.5 + 0.5 * sin(u_time * 9.0 + phase));
+            gl_PointSize = size * shimmer * (1.0 + u_audioLevel * 0.35)
+                         * u_pixelRatio * (140.0 / -mv.z);
+
+            // cool white at rest -> warm gold (#ffd699) when audio is active
+            vColor = mix(color, vec3(1.0, 0.84, 0.6), clamp(u_audioLevel * 1.4, 0.0, 0.92));
+            vAlpha = 0.8 + 0.2 * u_audioLevel;
+
+            gl_Position = projectionMatrix * mv;
+        }
+    `;
+
+    const fragmentShader = `
+        varying vec3 vColor;
+        varying float vAlpha;
+
+        void main() {
+            // soft circular point with glow falloff — no hard squares
+            vec2 uv = gl_PointCoord - vec2(0.5);
+            float d = length(uv);
+            if (d > 0.5) discard;
+            float core = exp(-d * d * 14.0);
+            float halo = smoothstep(0.5, 0.0, d) * 0.45;
+            float a = (core + halo) * vAlpha;
+            gl_FragColor = vec4(vColor * a, a);
+        }
+    `;
+
+    const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader,
+        fragmentShader,
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+    });
+
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+    // debug handle: inspect/override audio uniforms from console while tuning
+    window.__ttm = { uniforms, levels: null };
+
+    // ================================================================
+    //  MODE 2: PHOTO-DISSOLVE  (V3.6 — architecture only, NOT active)
+    // ================================================================
+    // TODO(V3.6): implement image sampling.
+    //   1. Load image into an offscreen <canvas>, getImageData().
+    //   2. Sample PARTICLE_COUNT bright pixels; map (x, y) -> world plane
+    //      coords, brightness -> slight z-depth; write into the
+    //      'targetPosition' attribute and pixel RGB into 'color'.
+    //   3. Animate uniforms.u_morph 1 -> assemble portrait,
+    //      0 -> dissolve back into the abstract nebula.
+    // All attributes (position/color/size/velocity/basePosition/
+    // targetPosition) and the u_morph uniform already exist, so this is
+    // purely image-sampling + a tween.
+    async function loadPhotoTargets(imageUrl) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error('portrait load failed: ' + imageUrl));
+            img.src = imageUrl;
+        });
+
+        const cw = 200, ch = Math.round(200 * (img.height / img.width));
+        const offscreen = document.createElement('canvas');
+        offscreen.width = cw;
+        offscreen.height = ch;
+        const ctx2d = offscreen.getContext('2d');
+        ctx2d.drawImage(img, 0, 0, cw, ch);
+        const imageData = ctx2d.getImageData(0, 0, cw, ch);
+        const pixels = imageData.data;
+
+        // collect bright-enough pixels
+        const candidates = [];
+        for (let y = 0; y < ch; y++) {
+            for (let x = 0; x < cw; x++) {
+                const idx = (y * cw + x) * 4;
+                const r = pixels[idx], g = pixels[idx+1], b = pixels[idx+2];
+                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+                if (brightness > 30) {
+                    candidates.push({ x, y, r, g, b, brightness });
+                }
+            }
+        }
+
+        // map pixel coords to world space centered at origin
+        const SPREAD = 40;
+        const aspectRatio = cw / ch;
+        const halfW = SPREAD * 0.5 * aspectRatio;
+        const halfH = SPREAD * 0.5;
+
+        const tPos = geometry.attributes.targetPosition.array;
+        const cols = geometry.attributes.color.array;
+
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+            const i3 = i * 3;
+            if (candidates.length === 0) break;
+            const px = candidates[Math.floor(Math.random() * candidates.length)];
+
+            // map (x,y) to world plane, slight z depth from brightness
+            tPos[i3]     = (px.x / cw - 0.5) * 2 * halfW;
+            tPos[i3 + 1] = -(px.y / ch - 0.5) * 2 * halfH;
+            tPos[i3 + 2] = (px.brightness / 255 - 0.5) * 4;
+
+            // set particle color from image pixel
+            cols[i3]     = px.r / 255;
+            cols[i3 + 1] = px.g / 255;
+            cols[i3 + 2] = px.b / 255;
+        }
+
+        geometry.attributes.targetPosition.needsUpdate = true;
+        geometry.attributes.color.needsUpdate = true;
+
+        // animate morph 0 -> 1 over 2 seconds
+        const morphStart = performance.now();
+        const MORPH_DURATION = 2000;
+        function animateMorph() {
+            const t = Math.min((performance.now() - morphStart) / MORPH_DURATION, 1);
+            const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+            uniforms.u_morph.value = eased;
+            if (t < 1) requestAnimationFrame(animateMorph);
+        }
+        animateMorph();
+        console.log('photo targets loaded:', candidates.length, 'pixels sampled');
+    }
+
+    if (PARTICLE_MODE === 'photo') {
+        loadPhotoTargets('portrait.jpg').catch(e => {
+            console.warn('photo mode fallback to abstract:', e.message);
+        });
+    }
+
+    // ================================================================
+    //  AUDIO ANALYSIS (Web Audio API)
+    // ================================================================
+    let audioContext = null;
+    let analyser = null;
+    let freqData = null;
+    let remoteSourceNode = null;   // createMediaElementSource — once per element
+    let micSourceNode = null;
+
+    // smoothed levels (never feed raw FFT to the shader)
+    const levels = { audio: 0, bass: 0, treble: 0 };
+    const targets = { audio: 0, bass: 0, treble: 0 };
+    if (window.__ttm) window.__ttm.levels = levels;
+
+    function ensureAudioGraph() {
+        if (audioContext) {
+            if (audioContext.state === 'suspended') audioContext.resume();
+            return;
+        }
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.55;
+        freqData = new Uint8Array(analyser.frequencyBinCount);
+
+        // remote AI voice (primary, gain 1.0) — element output is rerouted
+        // through the graph, so also connect to destination to stay audible
+        const remoteGain = audioContext.createGain();
+        remoteGain.gain.value = 1.0;
+        try {
+            remoteSourceNode = audioContext.createMediaElementSource(remoteAudio);
+            remoteSourceNode.connect(remoteGain);
+            remoteGain.connect(analyser);
+            remoteGain.connect(audioContext.destination);
+        } catch (err) {
+            console.warn('remote audio analyser hookup failed', err);
+        }
+        audioContext._micGain = audioContext.createGain();
+        audioContext._micGain.gain.value = 0.3; // local mic, secondary
+        audioContext._micGain.connect(analyser); // NOT to destination (no feedback)
+    }
+
+    function connectMicToAnalyser(mediaStreamTrack) {
+        if (!audioContext || !mediaStreamTrack) return;
+        try {
+            const stream = new MediaStream([mediaStreamTrack]);
+            micSourceNode = audioContext.createMediaStreamSource(stream);
+            micSourceNode.connect(audioContext._micGain);
+        } catch (err) {
+            console.warn('mic analyser hookup failed', err);
+        }
+    }
+
+    function disconnectMicFromAnalyser() {
+        if (micSourceNode) {
+            try { micSourceNode.disconnect(); } catch (_) {}
+            micSourceNode = null;
+        }
+    }
+
+    function sampleAudio() {
+        if (!analyser || !connected) {
+            targets.audio = 0; targets.bass = 0; targets.treble = 0;
+            return;
+        }
+        analyser.getByteFrequencyData(freqData);
+        let sum = 0;
+        for (let i = 0; i < freqData.length; i++) sum += freqData[i];
+        targets.audio = sum / freqData.length / 255;
+
+        let bass = 0;
+        for (let i = 0; i <= 3; i++) bass += freqData[i];
+        targets.bass = bass / 4 / 255;
+
+        let treble = 0;
+        for (let i = 20; i <= 40; i++) treble += freqData[i];
+        targets.treble = treble / 21 / 255;
+    }
+
+    function smoothLevels(dt) {
+        // fast attack, slow release — feels alive, never mechanical
+        for (const k of ['audio', 'bass', 'treble']) {
+            const t = targets[k];
+            const rate = t > levels[k] ? 10.0 : 2.8;
+            levels[k] += (t - levels[k]) * Math.min(1, rate * dt);
+        }
+    }
+
+    // ================================================================
+    //  RENDER LOOP
+    // ================================================================
+    const clock = new THREE.Clock();
+    let orbitAngle = 0;
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const dt = Math.min(clock.getDelta(), 0.05);
+        const elapsed = clock.elapsedTime;
+
+        sampleAudio();
+        smoothLevels(dt);
+
+        uniforms.u_time.value = elapsed;
+        uniforms.u_audioLevel.value = levels.audio;
+        uniforms.u_bassLevel.value = levels.bass;
+        uniforms.u_trebleLevel.value = levels.treble;
+
+        // slight auto-orbit, 0.05 rad/s around Y
+        orbitAngle += 0.05 * dt;
+        camera.position.x = Math.sin(orbitAngle) * CAMERA_RADIUS;
+        camera.position.z = Math.cos(orbitAngle) * CAMERA_RADIUS;
+        camera.position.y = 6 + Math.sin(elapsed * 0.07) * 3;
+        camera.lookAt(0, 0, 0);
+
+        // subtle slow rotation of the formation itself
+        points.rotation.y += 0.008 * dt;
+
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        uniforms.u_pixelRatio.value = Math.min(window.devicePixelRatio, 2);
+    });
+
+    // ================================================================
+    //  UI STATE
+    // ================================================================
+    let toastTimeout = null;
+    function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 3000);
+    }
+
+    function modelDisplayName() {
+        return MODEL_NAMES[modelSelect.value] || modelSelect.value;
+    }
+
+    // states: ready | connecting | connected | disconnected | error
+    function setStatus(state, customText) {
+        const name = modelDisplayName();
+        if (state === 'ready') {
+            statusDot.className = 'ready';
+            statusText.textContent = name + ' 就绪';
+        } else if (state === 'connecting') {
+            statusDot.className = 'connecting';
+            statusText.textContent = name + ' 连接中...';
+        } else if (state === 'connected') {
+            statusDot.className = 'connected';
+            statusText.textContent = name + ' 对话中';
+        } else if (state === 'disconnected') {
+            statusDot.className = 'ready';
+            statusText.textContent = name + ' 已断开';
+        } else {
+            statusDot.className = 'error';
+            statusText.textContent = customText || '出错了';
+        }
+    }
+
+    // ---- timer ----
+    let timerInterval = null;
+    let connectStart = 0;
+    function startTimer() {
+        connectStart = Date.now();
+        timerEl.textContent = '00:00';
+        clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+            const s = Math.floor((Date.now() - connectStart) / 1000);
+            const mm = String(Math.floor(s / 60)).padStart(2, '0');
+            const ss = String(s % 60).padStart(2, '0');
+            timerEl.textContent = mm + ':' + ss;
+        }, 500);
+    }
+    function stopTimer() {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+
+    // ---- transcription ----
+    let transcriptIdleTimeout = null;
+    function showTranscript(text) {
+        if (!text) return;
+        transcriptEl.textContent = text;
+        transcriptEl.classList.remove('idle');
+        // restart fade-in
+        transcriptEl.classList.remove('active');
+        void transcriptEl.offsetWidth;
+        transcriptEl.classList.add('active');
+        clearTimeout(transcriptIdleTimeout);
+        transcriptIdleTimeout = setTimeout(() => {
+            transcriptEl.classList.add('idle');
+        }, 6000);
+    }
+
+    function parseDataMessage(payload) {
+        let text = '';
+        try { text = new TextDecoder().decode(payload); } catch (_) { return ''; }
+        try {
+            const obj = JSON.parse(text);
+            if (typeof obj === 'string') return obj;
+            return obj.text || obj.transcript || obj.transcription || obj.message || '';
+        } catch (_) {
+            return text;
+        }
+    }
+
+    // ---- model selector ----
+    (function initModelSelect() {
+        const saved = localStorage.getItem('ttm-llm-provider');
+        if (saved && MODEL_NAMES[saved]) modelSelect.value = saved;
+        modelSelect.addEventListener('change', () => {
+            localStorage.setItem('ttm-llm-provider', modelSelect.value);
+            if (connected) {
+                showToast('切换后请重连');
+            } else {
+                setStatus(livekitReady ? 'ready' : 'error', 'LiveKit 未启动');
+            }
+        });
+    })();
+
+    // ================================================================
+    //  LIVEKIT CONNECTION  (tested, working logic — do not modify)
+    // ================================================================
+    const TOKEN_URL = window.location.origin + '/token';
+    const LIVEKIT_URL = 'ws://127.0.0.1:7880';
+
+    function getRoomName() {
+        const sel = document.getElementById('modelSelect');
+        const v = sel ? sel.value : 'minimax';
+        return 'ttm-' + v + '-room';
+    }
+
+    async function getToken() {
+        const identity = 'user-' + Math.random().toString(36).substring(2, 8);
+        const roomName = getRoomName();
+        const resp = await fetch(TOKEN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ room: roomName, identity: identity, name: '粉丝' }),
+        });
+        if (!resp.ok) {
+            const text = await resp.text();
+            throw new Error('Token 获取失败 (HTTP ' + resp.status + '): ' + text);
+        }
+        const data = await resp.json();
+        if (!data.token) throw new Error('Token 为空');
+        return data.token;
+    }
+
+    let room = null;
+    let connected = false;
+    let connecting = false;
+    let localIdentity = '';
+    let livekitReady = false;
+
+    async function connect() {
+        if (connected || connecting) return;
+        connecting = true;
+        ensureAudioGraph();
+        setStatus('connecting');
+
+        try {
+            const token = await getToken();
+
+            room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+
+            room.on(LivekitClient.RoomEvent.Connected, () => {
+                connected = true;
+                localIdentity = room.localParticipant ? room.localParticipant.identity : '';
+                setStatus('connected');
+                micButton.classList.add('connected');
+                startTimer();
+            });
+
+            room.on(LivekitClient.RoomEvent.Disconnected, () => {
+                connected = false;
+                connecting = false;
+                setStatus('disconnected');
+                micButton.classList.remove('connected', 'speaking');
+                stopTimer();
+                disconnectMicFromAnalyser();
+                remoteAudio.srcObject = null;
+                room = null;
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+                if (track.kind !== LivekitClient.Track.Kind.Audio) return;
+                track.attach(remoteAudio);
+                remoteAudio.muted = false;
+                const p = remoteAudio.play ? remoteAudio.play() : null;
+                if (p && typeof p.catch === 'function') {
+                    p.catch((err) => console.warn('remote audio autoplay blocked', err));
+                }
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+                if (track.kind !== LivekitClient.Track.Kind.Audio) return;
+                try { track.detach(remoteAudio); } catch (_) {}
+                remoteAudio.srcObject = null;
+            });
+
+            room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+                const aiSpeaking = speakers.some((s) => s.identity !== localIdentity);
+                micButton.classList.toggle('speaking', aiSpeaking);
+            });
+
+            room.on(LivekitClient.RoomEvent.DataReceived, (payload) => {
+                const text = parseDataMessage(payload);
+                if (text) showTranscript(text);
+            });
+
+            await room.connect(LIVEKIT_URL, token);
+
+            try {
+                await room.localParticipant.setMicrophoneEnabled(true);
+                // feed local mic into the analyser (secondary, gain 0.3)
+                const pubs = room.localParticipant.audioTrackPublications;
+                const pub = pubs && pubs.size ? pubs.values().next().value : null;
+                if (pub && pub.track && pub.track.mediaStreamTrack) {
+                    connectMicToAnalyser(pub.track.mediaStreamTrack);
+                }
+            } catch (micErr) {
+                console.warn('microphone error', micErr);
+                showToast('请允许浏览器使用麦克风');
+            }
+
+            connecting = false;
+        } catch (err) {
+            console.error(err);
+            connecting = false;
+            connected = false;
+            setStatus('error', '连接失败');
+            micButton.classList.remove('connected', 'speaking');
+            if (room) { try { room.disconnect(); } catch (_) {} room = null; }
+        }
+    }
+
+    function disconnect() {
+        if (room) { room.disconnect(); room = null; }
+        connected = false;
+        connecting = false;
+        setStatus('disconnected');
+        micButton.classList.remove('connected', 'speaking');
+        stopTimer();
+        disconnectMicFromAnalyser();
+    }
+
+    micButton.addEventListener('click', () => {
+        connected ? disconnect() : connect();
+    });
+
+    // startup: check LiveKit availability
+    function checkLiveKit() {
+        fetch(LIVEKIT_URL.replace('ws://', 'http://'))
+            .then((r) => r.text())
+            .then((t) => {
+                if (t.includes('OK')) {
+                    livekitReady = true;
+                    setStatus('ready');
+                } else {
+                    setStatus('error', 'LiveKit 未启动');
+                }
+            })
+            .catch(() => {
+                setStatus('error', 'LiveKit 未启动');
+            });
+    }
+
+    setStatus('ready');
+    checkLiveKit();
+}
+
+if (window.THREE) bootTalkToMe();
+else window.addEventListener('three-ready', bootTalkToMe, { once: true });
+</script>
+</body>
+</html>

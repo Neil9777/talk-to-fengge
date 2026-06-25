@@ -1,0 +1,29 @@
+# 环境与密钥
+.env.local
+runpod_config.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# IDE
+.claude/
+.cursor/
+.vscode/
+.idea/
+
+# 个人素材
+web/portrait.jpg
+assets/voice_samples/
+
+# 备份
+*.bak*
+
+# 日志
+*.log
